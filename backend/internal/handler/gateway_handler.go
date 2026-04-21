@@ -52,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	pricingService            *service.PricingService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -70,6 +71,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	pricingService *service.PricingService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -107,6 +109,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		pricingService:            pricingService,
 	}
 }
 
@@ -950,36 +953,123 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "")
 
 	if len(availableModels) > 0 {
-		// Build model list from whitelist
-		models := make([]claude.Model, 0, len(availableModels))
-		for _, modelID := range availableModels {
-			models = append(models, claude.Model{
-				ID:          modelID,
-				Type:        "model",
-				DisplayName: modelID,
-				CreatedAt:   "2024-01-01T00:00:00Z",
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
-		})
+		h.writeModelsResponse(c, availableModels)
 		return
 	}
 
 	// Fallback to default models
 	if platform == "openai" {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   openai.DefaultModels,
-		})
+		h.writeDefaultOpenAIModelsResponse(c)
 		return
 	}
 
+	h.writeDefaultClaudeModelsResponse(c)
+}
+
+type modelPricingResponse struct {
+	InputCostPerToken           *float64 `json:"input_cost_per_token,omitempty"`
+	OutputCostPerToken          *float64 `json:"output_cost_per_token,omitempty"`
+	CacheReadInputTokenCost     *float64 `json:"cache_read_input_token_cost,omitempty"`
+	CacheCreationInputTokenCost *float64 `json:"cache_creation_input_token_cost,omitempty"`
+}
+
+type modelResponse struct {
+	ID              string                `json:"id"`
+	Type            string                `json:"type"`
+	DisplayName     string                `json:"display_name"`
+	CreatedAt       string                `json:"created_at"`
+	ContextLength   *int                  `json:"context_length,omitempty"`
+	MaxOutputTokens *int                  `json:"max_output_tokens,omitempty"`
+	Pricing         *modelPricingResponse `json:"pricing,omitempty"`
+}
+
+func (h *GatewayHandler) writeModelsResponse(c *gin.Context, modelIDs []string) {
+	models := make([]modelResponse, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, h.buildModelResponse(modelID, modelID, "2024-01-01T00:00:00Z"))
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   claude.DefaultModels,
+		"data":   models,
 	})
+}
+
+func (h *GatewayHandler) writeDefaultOpenAIModelsResponse(c *gin.Context) {
+	models := make([]modelResponse, 0, len(openai.DefaultModels))
+	for _, model := range openai.DefaultModels {
+		createdAt := time.Unix(model.Created, 0).UTC().Format(time.RFC3339)
+		models = append(models, h.buildModelResponse(model.ID, model.DisplayName, createdAt))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func (h *GatewayHandler) writeDefaultClaudeModelsResponse(c *gin.Context) {
+	models := make([]modelResponse, 0, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		models = append(models, h.buildModelResponse(model.ID, model.DisplayName, model.CreatedAt))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func (h *GatewayHandler) buildModelResponse(modelID, displayName, createdAt string) modelResponse {
+	resp := modelResponse{
+		ID:          modelID,
+		Type:        "model",
+		DisplayName: displayName,
+		CreatedAt:   createdAt,
+	}
+
+	pricing := h.lookupModelMetadata(modelID)
+	if pricing == nil {
+		return resp
+	}
+
+	if pricing.MaxInputTokens > 0 {
+		v := pricing.MaxInputTokens
+		resp.ContextLength = &v
+	}
+	if pricing.MaxOutputTokens > 0 {
+		v := pricing.MaxOutputTokens
+		resp.MaxOutputTokens = &v
+	}
+
+	metaPricing := &modelPricingResponse{}
+	if pricing.InputCostPerToken > 0 {
+		v := pricing.InputCostPerToken
+		metaPricing.InputCostPerToken = &v
+	}
+	if pricing.OutputCostPerToken > 0 {
+		v := pricing.OutputCostPerToken
+		metaPricing.OutputCostPerToken = &v
+	}
+	if pricing.CacheReadInputTokenCost > 0 {
+		v := pricing.CacheReadInputTokenCost
+		metaPricing.CacheReadInputTokenCost = &v
+	}
+	if pricing.CacheCreationInputTokenCost > 0 {
+		v := pricing.CacheCreationInputTokenCost
+		metaPricing.CacheCreationInputTokenCost = &v
+	}
+	if metaPricing.InputCostPerToken != nil || metaPricing.OutputCostPerToken != nil || metaPricing.CacheReadInputTokenCost != nil || metaPricing.CacheCreationInputTokenCost != nil {
+		resp.Pricing = metaPricing
+	}
+
+	return resp
+}
+
+func (h *GatewayHandler) lookupModelMetadata(modelID string) *service.LiteLLMModelPricing {
+	if h != nil && h.pricingService != nil {
+		if pricing := h.pricingService.GetModelPricing(modelID); pricing != nil {
+			return pricing
+		}
+	}
+	return service.GetDefaultModelMetadata(modelID)
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
