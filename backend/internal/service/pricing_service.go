@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/modelmetadata"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"go.uber.org/zap"
@@ -66,6 +67,9 @@ type LiteLLMModelPricing struct {
 	LongContextInputTokenThreshold      int     `json:"long_context_input_token_threshold,omitempty"`
 	LongContextInputCostMultiplier      float64 `json:"long_context_input_cost_multiplier,omitempty"`
 	LongContextOutputCostMultiplier     float64 `json:"long_context_output_cost_multiplier,omitempty"`
+	MaxInputTokens                      int     `json:"max_input_tokens,omitempty"`
+	MaxOutputTokens                     int     `json:"max_output_tokens,omitempty"`
+	MaxTokens                           int     `json:"max_tokens,omitempty"`
 	SupportsServiceTier                 bool    `json:"supports_service_tier"`
 	LiteLLMProvider                     string  `json:"litellm_provider"`
 	Mode                                string  `json:"mode"`
@@ -90,6 +94,9 @@ type LiteLLMRawEntry struct {
 	CacheCreationInputTokenCostAbove1hr *float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCost             *float64 `json:"cache_read_input_token_cost"`
 	CacheReadInputTokenCostPriority     *float64 `json:"cache_read_input_token_cost_priority"`
+	MaxInputTokens                      *int     `json:"max_input_tokens"`
+	MaxOutputTokens                     *int     `json:"max_output_tokens"`
+	MaxTokens                           *int     `json:"max_tokens"`
 	SupportsServiceTier                 bool     `json:"supports_service_tier"`
 	LiteLLMProvider                     string   `json:"litellm_provider"`
 	Mode                                string   `json:"mode"`
@@ -413,6 +420,15 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		if entry.OutputCostPerImageToken != nil {
 			pricing.OutputCostPerImageToken = *entry.OutputCostPerImageToken
 		}
+		if entry.MaxInputTokens != nil {
+			pricing.MaxInputTokens = *entry.MaxInputTokens
+		}
+		if entry.MaxOutputTokens != nil {
+			pricing.MaxOutputTokens = *entry.MaxOutputTokens
+		}
+		if entry.MaxTokens != nil {
+			pricing.MaxTokens = *entry.MaxTokens
+		}
 
 		result[modelName] = pricing
 	}
@@ -526,6 +542,10 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	return s.getModelPricingLocked(modelName)
+}
+
+func (s *PricingService) getModelPricingLocked(modelName string) *LiteLLMModelPricing {
 	if modelName == "" {
 		return nil
 	}
@@ -574,6 +594,22 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	}
 
 	return nil
+}
+
+func GetDefaultModelMetadata(modelName string) *LiteLLMModelPricing {
+	meta := modelmetadata.GetDefaultModelMetadata(modelName)
+	if meta == nil {
+		return nil
+	}
+	return &LiteLLMModelPricing{
+		InputCostPerToken:           meta.InputCostPerToken,
+		OutputCostPerToken:          meta.OutputCostPerToken,
+		CacheReadInputTokenCost:     meta.CacheReadInputTokenCost,
+		CacheCreationInputTokenCost: meta.CacheCreationInputTokenCost,
+		MaxInputTokens:              meta.MaxInputTokens,
+		MaxOutputTokens:             meta.MaxOutputTokens,
+		MaxTokens:                   meta.MaxTokens,
+	}
 }
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
