@@ -16,6 +16,9 @@ type LiteLLMRawEntry struct {
 	MaxInputTokens              *int     `json:"max_input_tokens"`
 	MaxOutputTokens             *int     `json:"max_output_tokens"`
 	MaxTokens                   *int     `json:"max_tokens"`
+	SupportedModalities         []string `json:"supported_modalities"`
+	SupportedOutputModalities   []string `json:"supported_output_modalities"`
+	SupportsPDFInput            bool     `json:"supports_pdf_input"`
 }
 
 type LiteLLMModelMetadata struct {
@@ -26,6 +29,9 @@ type LiteLLMModelMetadata struct {
 	MaxInputTokens              int
 	MaxOutputTokens             int
 	MaxTokens                   int
+	SupportedModalities         []string
+	SupportedOutputModalities   []string
+	SupportsPDFInput            bool
 }
 
 func GetDefaultModelMetadata(modelName string) *LiteLLMModelMetadata {
@@ -63,7 +69,14 @@ func GetDefaultModelMetadata(modelName string) *LiteLLMModelMetadata {
 	if raw.MaxTokens != nil {
 		meta.MaxTokens = *raw.MaxTokens
 	}
-	if meta.InputCostPerToken == 0 && meta.OutputCostPerToken == 0 && meta.CacheReadInputTokenCost == 0 && meta.CacheCreationInputTokenCost == 0 && meta.MaxInputTokens == 0 && meta.MaxOutputTokens == 0 && meta.MaxTokens == 0 {
+	if len(raw.SupportedModalities) > 0 {
+		meta.SupportedModalities = append([]string(nil), raw.SupportedModalities...)
+	}
+	if len(raw.SupportedOutputModalities) > 0 {
+		meta.SupportedOutputModalities = append([]string(nil), raw.SupportedOutputModalities...)
+	}
+	meta.SupportsPDFInput = raw.SupportsPDFInput
+	if meta.InputCostPerToken == 0 && meta.OutputCostPerToken == 0 && meta.CacheReadInputTokenCost == 0 && meta.CacheCreationInputTokenCost == 0 && meta.MaxInputTokens == 0 && meta.MaxOutputTokens == 0 && meta.MaxTokens == 0 && len(meta.SupportedModalities) == 0 && len(meta.SupportedOutputModalities) == 0 && !meta.SupportsPDFInput {
 		return nil
 	}
 	return meta

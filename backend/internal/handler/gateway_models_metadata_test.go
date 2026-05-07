@@ -30,6 +30,10 @@ func TestBuildModelResponse_EnrichesOptionalMetadata(t *testing.T) {
 	require.InDelta(t, 2.5e-06, *resp.Pricing.InputCostPerToken, 1e-12)
 	require.NotNil(t, resp.Pricing.OutputCostPerToken)
 	require.InDelta(t, 1.5e-05, *resp.Pricing.OutputCostPerToken, 1e-12)
+	require.ElementsMatch(t, []string{"text", "image"}, resp.InputModalities)
+	require.ElementsMatch(t, []string{"text", "image"}, resp.OutputModalities)
+	require.NotNil(t, resp.Attachments)
+	require.True(t, *resp.Attachments)
 }
 
 func TestBuildModelResponse_OmitsUnknownOptionalMetadata(t *testing.T) {
@@ -41,6 +45,9 @@ func TestBuildModelResponse_OmitsUnknownOptionalMetadata(t *testing.T) {
 	require.Nil(t, resp.ContextLength)
 	require.Nil(t, resp.MaxOutputTokens)
 	require.Nil(t, resp.Pricing)
+	require.Nil(t, resp.InputModalities)
+	require.Nil(t, resp.OutputModalities)
+	require.Nil(t, resp.Attachments)
 }
 
 func TestModels_WhitelistResponseIncludesMetadata(t *testing.T) {
@@ -58,4 +65,7 @@ func TestModels_WhitelistResponseIncludesMetadata(t *testing.T) {
 	require.Contains(t, body, `"context_length":1050000`)
 	require.Contains(t, body, `"max_output_tokens":128000`)
 	require.Contains(t, body, `"pricing"`)
+	require.Contains(t, body, `"input_modalities":["text","image"]`)
+	require.Contains(t, body, `"output_modalities":["text","image"]`)
+	require.Contains(t, body, `"attachments":true`)
 }

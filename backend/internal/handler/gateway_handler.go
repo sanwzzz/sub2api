@@ -974,13 +974,16 @@ type modelPricingResponse struct {
 }
 
 type modelResponse struct {
-	ID              string                `json:"id"`
-	Type            string                `json:"type"`
-	DisplayName     string                `json:"display_name"`
-	CreatedAt       string                `json:"created_at"`
-	ContextLength   *int                  `json:"context_length,omitempty"`
-	MaxOutputTokens *int                  `json:"max_output_tokens,omitempty"`
-	Pricing         *modelPricingResponse `json:"pricing,omitempty"`
+	ID               string                `json:"id"`
+	Type             string                `json:"type"`
+	DisplayName      string                `json:"display_name"`
+	CreatedAt        string                `json:"created_at"`
+	ContextLength    *int                  `json:"context_length,omitempty"`
+	MaxOutputTokens  *int                  `json:"max_output_tokens,omitempty"`
+	InputModalities  []string              `json:"input_modalities,omitempty"`
+	OutputModalities []string              `json:"output_modalities,omitempty"`
+	Attachments      *bool                 `json:"attachments,omitempty"`
+	Pricing          *modelPricingResponse `json:"pricing,omitempty"`
 }
 
 func (h *GatewayHandler) writeModelsResponse(c *gin.Context, modelIDs []string) {
@@ -1037,6 +1040,16 @@ func (h *GatewayHandler) buildModelResponse(modelID, displayName, createdAt stri
 	if pricing.MaxOutputTokens > 0 {
 		v := pricing.MaxOutputTokens
 		resp.MaxOutputTokens = &v
+	}
+	if len(pricing.SupportedModalities) > 0 {
+		resp.InputModalities = append([]string(nil), pricing.SupportedModalities...)
+	}
+	if len(pricing.SupportedOutputModalities) > 0 {
+		resp.OutputModalities = append([]string(nil), pricing.SupportedOutputModalities...)
+	}
+	if pricing.SupportsPDFInput {
+		v := true
+		resp.Attachments = &v
 	}
 
 	metaPricing := &modelPricingResponse{}
